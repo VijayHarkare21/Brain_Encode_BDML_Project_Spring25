@@ -1,0 +1,2 @@
+classifier,accuracy,cv_mean,cv_std
+Softmax,0.18181818181818182,,

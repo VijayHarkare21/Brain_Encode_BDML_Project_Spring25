@@ -1,0 +1,9 @@
+Embeddings shape before squeeze: (1985, 1, 200)
+Embeddings shape: (1985, 200)
+Number of features with low variance: 0
+Number of highly correlated feature pairs: 0
+(1985, 200)
+Explained variance ratio of first few components: [0.2749313  0.19039829 0.10386964 0.08295321 0.06132871 0.03256141
+ 0.02742171 0.02428943 0.02111589 0.01573798]
+Eigenvalues shape: (200,)
+Eigenvectors shape: (200, 200)

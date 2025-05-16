@@ -1,0 +1,2 @@
+classifier,accuracy,cv_mean,cv_std
+Decision Tree,0.09090909090909091,0.2611111111111111,0.14656562175858798

@@ -1,0 +1,9 @@
+Number of features with low variance: 0
+Number of highly correlated feature pairs: 10104
+Average correlation across all channels: 0.025582391623282304
+Max correlation: 0.042659099521208735
+Min correlation: 0.015100189796832671
+Explained variance ratio of first few components: [0.48475116 0.05007417 0.0300705  0.02314464 0.01430971 0.00914563
+ 0.0073583  0.00610633 0.00548928 0.00519059]
+Eigenvalues shape: (247,)
+Eigenvectors shape: (247, 21000)

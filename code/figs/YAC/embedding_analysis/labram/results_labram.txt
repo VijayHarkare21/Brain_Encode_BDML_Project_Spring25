@@ -1,0 +1,6 @@
+Number of features with low variance: 0
+Indices of low variance features: []
+Number of highly correlated feature pairs: 0
+Highly correlated feature pairs: []
+Explained variance ratio of first few components: [0.36789215 0.09629713 0.05197467 0.04442805 0.04165595 0.03576633
+ 0.02624162 0.02422019 0.02298447 0.02170089]

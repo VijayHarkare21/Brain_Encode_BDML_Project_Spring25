@@ -1,0 +1,2 @@
+classifier,accuracy,cv_mean,cv_std
+Logistic Regression,0.2679580306698951,0.2658999684024911,0.006969044265244154

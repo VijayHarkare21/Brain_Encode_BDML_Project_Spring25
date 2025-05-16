@@ -1,0 +1,49 @@
+embed_model,modality,mode,cls,accuracy
+image,cbramod,average,Decision Tree,0.3180169286577993
+image,cbramod,average,KNN (k=5),0.4365175332527207
+image,cbramod,average,Logistic Regression,0.530229746070133
+image,cbramod,average,MLP,0.5498790810157195
+image,cbramod,average,Gaussian Naive Bayes,0.0846432889963724
+image,cbramod,average,Softmax,0.5459492140266021
+image,cbramod,stack,Decision Tree,0.3004836759371221
+image,cbramod,stack,KNN (k=5),0.4262394195888754
+image,cbramod,stack,Logistic Regression,0.5081620314389359
+image,cbramod,stack,MLP,0.526602176541717
+image,cbramod,stack,Gaussian Naive Bayes,0.0498790810157194
+image,cbramod,stack,Softmax,0.5253929866989118
+image,labram,average,Decision Tree,0.3137847642079806
+image,labram,average,KNN (k=5),0.4470979443772672
+image,labram,average,Logistic Regression,0.5513905683192262
+image,labram,average,MLP,0.5489721886336155
+image,labram,average,Gaussian Naive Bayes,0.1051995163240628
+image,labram,average,Softmax,0.5565296251511487
+image,labram,stack,Decision Tree,0.2932285368802902
+image,labram,stack,KNN (k=5),0.4256348246674727
+image,labram,stack,Logistic Regression,0.5253929866989118
+image,labram,stack,MLP,0.5269044740024184
+image,labram,stack,Gaussian Naive Bayes,0.1039903264812575
+image,labram,stack,Softmax,0.5269044740024184
+text,cbramod,average,Decision Tree,0.6363636363636364
+text,cbramod,average,KNN (k=5),0.2727272727272727
+text,cbramod,average,Logistic Regression,0.0909090909090909
+text,cbramod,average,MLP,0.4545454545454545
+text,cbramod,average,Gaussian Naive Bayes,0.2727272727272727
+text,cbramod,average,Softmax,0.1818181818181818
+text,cbramod,stack,Decision Tree,0.2098466505246166
+text,cbramod,stack,KNN (k=5),0.2389023405972558
+text,cbramod,stack,Logistic Regression,0.2679580306698951
+text,cbramod,stack,MLP,0.3712671509281678
+text,cbramod,stack,Gaussian Naive Bayes,0.1178369652945924
+text,cbramod,stack,Softmax,0.3325262308313155
+text,labram,average,Decision Tree,0.0909090909090909
+text,labram,average,KNN (k=5),0.2727272727272727
+text,labram,average,Logistic Regression,0.0
+text,labram,average,MLP,0.2727272727272727
+text,labram,average,Gaussian Naive Bayes,0.0909090909090909
+text,labram,average,Softmax,0.1818181818181818
+text,labram,stack,Decision Tree,0.2267958030669895
+text,labram,stack,KNN (k=5),0.2485875706214689
+text,labram,stack,Logistic Regression,0.3260694108151735
+text,labram,stack,MLP,0.3761097659402744
+text,labram,stack,Gaussian Naive Bayes,0.0734463276836158
+text,labram,stack,Softmax,0.3640032284100081

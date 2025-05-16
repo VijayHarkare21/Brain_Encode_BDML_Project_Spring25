@@ -1,0 +1,2 @@
+classifier,accuracy,cv_mean,cv_std
+Gaussian Naive Bayes,0.10399032648125756,0.08940508243762602,0.005900546173010794

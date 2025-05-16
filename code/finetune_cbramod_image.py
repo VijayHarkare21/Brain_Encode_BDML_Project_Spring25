@@ -1,0 +1,323 @@
+#!/usr/bin/env python3
+"""
+fine_tune_cbramod_physio_style.py
+
+Fine‑tune CBraMod with the Physio‑style classifier head, adapted to 17‑channel,
+200‑sample (1 s) EEG-image trials. Supports 'stack' or 'average' subject handling.
+
+Usage:
+  python fine_tune_cbramod_physio_style.py \
+    --eeg_root /path/to/eeg/preprocessed_data \
+    --img_meta  /path/to/image_metadata.npy \
+    --things_map /path/to/things_map.tsv \
+    --subject_handling stack \
+    --use_pretrained_weights \
+    --foundation_dir /path/to/pretrained_weights.pth \
+    --batch_size 32 \
+    --lr 1e-4 \
+    --epochs 25
+"""
+import os
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from torch.utils.data import Dataset, DataLoader, random_split
+
+from cbramod import CBraMod                                             # :contentReference[oaicite:0]{index=0}:contentReference[oaicite:1]{index=1}
+from pre_process_eeg_cbramod import process_eeg                           # :contentReference[oaicite:2]{index=2}:contentReference[oaicite:3]{index=3}
+from eeg_embeds_utils import load_image_labels
+
+# ---------------- Supervised InfoNCE -----------------
+def info_nce(z, y, temperature=0.07):
+    """
+    z : [B, d]   (assumed L2-normalised)
+    y : [B]      (integer class labels)
+    """
+    z = nn.functional.normalize(z, dim=1)            # safety
+    sim = torch.matmul(z, z.T) / temperature         # [B,B]
+    labels = y.unsqueeze(0) == y.unsqueeze(1)        # positives mask
+    # remove self-similarities from denominator
+    logits_mask = torch.ones_like(sim, dtype=torch.bool, device=sim.device)
+    logits_mask.fill_diagonal_(0)
+
+    exp_sim = torch.exp(sim) * logits_mask           # exp(sim_ij) but 0 on the diag
+    log_prob = sim - torch.log(exp_sim.sum(dim=1, keepdim=True) + 1e-9)
+
+    # only positive pairs contribute
+    loss = -(log_prob * labels.float()).sum(dim=1) / labels.sum(dim=1).clamp(min=1)
+    return loss.mean()
+
+
+# -----------------------------------------------------------------------------
+# Physio‑style Model head, adapted for image EEG (17 chans × 1 patch × 200 pts)
+# -----------------------------------------------------------------------------
+class Model(nn.Module):
+    def __init__(self, param):
+        super(Model, self).__init__()
+        # CBraMod backbone: in_dim = #channels (17), out_dim/d_model = 200
+        self.backbone = CBraMod(
+            in_dim=200, out_dim=200, d_model=200,
+            dim_feedforward=800,
+            seq_len=30,
+            n_layer=12, nhead=8
+        )
+        if param.use_pretrained_weights:
+            map_location = torch.device(f'cuda:{param.cuda}' if torch.cuda.is_available() else 'cpu')
+            self.backbone.load_state_dict(torch.load(param.foundation_dir, map_location=map_location))
+        # bypass the default projection to out_dim
+        self.backbone.proj_out = nn.Identity()
+
+        flat_dim   = param.channels * param.patches * param.d_model  # 17×1×200 = 3400
+        hidden_dim = param.patches * param.d_model                  # 1×200 = 200
+
+        # --------- encoder ϕ(·) whose output we will contrast ----------
+        self.embedder = nn.Sequential(
+            nn.Linear(flat_dim, hidden_dim),
+            nn.ELU(),
+            nn.Dropout(param.dropout),
+            nn.Linear(hidden_dim, param.d_model),
+            nn.ELU()
+        )
+        # --------- classifier head g(·) -------------------------------
+        self.classifier = nn.Sequential(
+            nn.Dropout(param.dropout),
+            nn.Linear(param.d_model, param.num_of_classes)
+        )
+
+    def forward(self, x):
+        feats = self.backbone(x)                      # [B,17,1,200]
+        B,C,P,D = feats.shape
+        flat     = feats.view(B, C*P*D)              # [B,3400]
+        z        = self.embedder(flat)               # [B,200]  ← contrast here
+        logits   = self.classifier(z)                # [B,#cls]
+        return z, logits
+
+# -----------------------------------------------------------------------------
+# Dataset: exactly as before, but keep channels=17, patch_size=200
+# -----------------------------------------------------------------------------
+class EEGImageDataset(Dataset):
+    def __init__(self, eeg_root, img_meta_path, things_map_path, subject_handling):
+        self.handling = subject_handling
+        # load THINGS metadata
+        img_meta      = np.load(img_meta_path, allow_pickle=True).item()
+        concepts      = img_meta['train_img_concepts']
+        files         = img_meta['train_img_files']
+        label_map     = load_image_labels(img_meta_path, things_map_path)
+
+        raws, labels = [], []
+        per_image = {i: [] for i in range(len(concepts))}
+
+        for subj in sorted(os.listdir(eeg_root)):
+            subj_fp = os.path.join(eeg_root, subj, 'preprocessed_eeg_training.npy')
+            if not os.path.exists(subj_fp): continue
+            data = np.load(subj_fp, allow_pickle=True).item()
+            eeg  = data['preprocessed_eeg_data']    # [n_cond, n_rep, 17, 200]
+            n_cond, n_rep, _, _ = eeg.shape
+
+            if self.handling == 'stack':
+                for i in range(n_cond):
+                    key = f"{concepts[i]}/{files[i]}".lower()
+                    lbl = label_map[key]
+                    for r in range(n_rep):
+                        raws.append(eeg[i, r])         # (17,200)
+                        labels.append(lbl)
+            else:
+                subj_mean = eeg.mean(axis=1)         # [n_cond,17,200]
+                for i in range(n_cond):
+                    per_image[i].append(subj_mean[i])
+
+        if self.handling == 'average':
+            for i, mats in per_image.items():
+                raws.append(np.stack(mats,0).mean(0))
+                key = f"{concepts[i]}/{files[i]}".lower()
+                labels.append(label_map[key])
+
+        # build label→idx
+        uniq = sorted(set(labels))
+        self.label2idx = {l:i for i,l in enumerate(uniq)}
+        self.num_of_classes = len(uniq)
+        self.raws   = raws
+        self.labels = [self.label2idx[l] for l in labels]
+
+    def __len__(self): return len(self.raws)
+    def __getitem__(self, idx):
+        raw = self.raws[idx].T                            # (200,17)
+        proc= process_eeg(raw,       orig_sfreq=200)      # → [1,17,patches=1,200] :contentReference[oaicite:4]{index=4}:contentReference[oaicite:5]{index=5}
+        x   = torch.from_numpy(proc).float().squeeze(0)   # [17,1,200]
+        y   = self.labels[idx]
+        return x, y
+
+# -----------------------------------------------------------------------------
+# Training / evaluation routines (standard PyTorch)
+# -----------------------------------------------------------------------------
+
+def train_epoch(m, o, scheduler, ce, loader, dev):
+    lambda_ce   = 0.2           # weight for classification loss
+    lambda_nce  = 1.0           # weight for contrastive loss
+    temperature = 0.07
+    m.train(); total, loss_tot = 0, 0
+    for x, y in loader:
+        x, y = x.to(dev), y.to(dev)
+        o.zero_grad()
+
+        z, logits = m(x)
+        loss_ce   = ce(logits, y)
+        loss_nce  = info_nce(z, y, temperature)
+        loss      = lambda_ce * loss_ce + lambda_nce * loss_nce
+
+        loss.backward()
+        o.step()
+        scheduler.step()
+        loss_tot += loss.item() * x.size(0)
+        total += x.size(0)
+    return loss_tot / total
+
+
+@torch.no_grad()
+def eval_epoch(m, ce, loader, dev, k=5):
+    m.eval()
+    total, ce_loss, correct = 0, 0, 0
+    all_z, all_y = [], []                   # <-- NEW
+
+    for x, y in loader:
+        x, y = x.to(dev), y.to(dev)
+        z, logits = m(x)
+        loss = ce(logits, y)
+
+        # accumulate standard CE metrics
+        ce_loss += loss.item() * x.size(0)
+        pred = logits.argmax(1)
+        correct += (pred == y).sum().item()
+        total += x.size(0)
+
+        # accumulate embeddings for k-NN
+        all_z.append(z)
+        all_y.append(y)
+
+    # Concatenate stored tensors
+    z_cat = torch.cat(all_z, 0)
+    y_cat = torch.cat(all_y, 0)
+
+    # ---- k-NN & Recall@k on the *embeddings* ----
+    knn = knn_metrics(z_cat, y_cat, k=k)    # {'1nn': ..., 'recall@k': ...}
+
+    return (
+        ce_loss / total,
+        correct / total,
+        knn['1nn'],
+        knn[f'recall@{k}']
+    )
+
+    
+from collections import Counter, defaultdict
+def balanced_sampler(labels, repeat=4):
+    buckets = defaultdict(list)
+    for idx, lab in enumerate(labels):
+        buckets[lab].append(idx)
+    idxs = []
+    # draw 'repeat' copies of each label index list shuffled
+    for _ in range(repeat):
+        for lab, arr in buckets.items():
+            idxs.extend(np.random.permutation(arr))
+    return torch.utils.data.SubsetRandomSampler(idxs)
+
+from sklearn.neighbors import NearestNeighbors
+
+@torch.no_grad()
+def knn_metrics(embeddings, labels, k=5, metric='cosine'):
+    """
+    embeddings : Tensor [N, d]
+    labels     : Tensor [N]
+    Returns dict with 1-NN accuracy and Recall@k.
+    Computes *leave-one-out* k-NN on the validation set itself.
+    """
+    # L2-normalise for cosine metric
+    z = torch.nn.functional.normalize(embeddings, dim=1).cpu().numpy()
+    y = labels.cpu().numpy()
+
+    nn = NearestNeighbors(n_neighbors=k+1, metric=metric)  # +1 for the sample itself
+    nn.fit(z)
+    dist, idx = nn.kneighbors(z)                           # idx shape [N, k+1]
+
+    idx = idx[:, 1:]                                       # drop self-match at col 0
+    neigh_labels = y[idx]                                  # shape [N, k]
+
+    # 1-NN accuracy
+    acc_1nn = (neigh_labels[:, 0] == y).mean()
+
+    # Recall@k (hit if *any* of top-k neighbours shares the label)
+    hits = (neigh_labels == y[:, None]).any(axis=1)
+    recall_k = hits.mean()
+
+    return {'1nn': acc_1nn, f'recall@{k}': recall_k}
+
+# -----------------------------------------------------------------------------
+# Main CLI
+# -----------------------------------------------------------------------------
+if __name__=="__main__":
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--eeg_root",            required=True)
+    parser.add_argument("--model_dir",            required=True)
+    parser.add_argument("--img_meta",            required=True)
+    parser.add_argument("--things_map",          required=True)
+    parser.add_argument("--subject_handling",    choices=["stack","average"], default="stack")
+    parser.add_argument("--use_pretrained_weights", action="store_true")
+    parser.add_argument("--foundation_dir",      default="pretrained_weights.pth")
+    parser.add_argument("--batch_size",    type=int,   default=32)
+    parser.add_argument("--lr",            type=float, default=1e-4)
+    parser.add_argument("--epochs",        type=int,   default=25)
+    parser.add_argument("--dropout",       type=float, default=0.2)
+    parser.add_argument("--cuda",          type=int,   default=0)
+    args = parser.parse_args()
+
+    # augment args with model params
+    args.channels        = 17
+    args.d_model         = 200
+    args.dim_feedforward = 800
+    args.seq_len         = 1
+    args.patches         = 30
+    args.n_layer         = 12
+    args.nhead           = 8
+
+    # dataset & split
+    ds = EEGImageDataset(args.eeg_root, args.img_meta, args.things_map, args.subject_handling)
+    n_val = int(len(ds)*0.2); n_tr = len(ds)-n_val
+    tr,va = random_split(ds,[n_tr,n_val])
+    sampler = balanced_sampler(ds.labels)
+    dl_tr   = DataLoader(tr, batch_size=args.batch_size, sampler=sampler)
+    dl_va = DataLoader(va, batch_size=args.batch_size)
+
+    device = torch.device(f"cuda:{args.cuda}" if torch.cuda.is_available() else "cpu")
+    model = Model(args).to(device)
+    opt   = optim.AdamW(model.parameters, lr=3e-4, weight_decay=1e-2)
+    total_steps  = len(dl_tr) * args.epochs
+    warmup_steps = len(dl_tr) * 3
+    scheduler = optim.lr_scheduler.SequentialLR(
+        opt,
+        schedulers=[
+            optim.lr_scheduler.LinearLR(opt, start_factor=1e-2, total_iters=warmup_steps),
+            optim.lr_scheduler.CosineAnnealingLR(
+                opt, T_max=total_steps - warmup_steps, eta_min=1e-6
+            )
+        ],
+        milestones=[warmup_steps]
+    )
+    crit  = nn.CrossEntropyLoss()
+
+    best_acc = 0
+    for ep in range(1, args.epochs + 1):
+        tr_loss = train_epoch(model, opt, scheduler, crit, dl_tr, device)
+        va_loss, va_acc, va_1nn, va_rk = eval_epoch(model, crit, dl_va, device, k=5)
+    
+        print(f"Ep{ep:02d} | "
+              f"CE_tr {tr_loss:.4f} | CE_va {va_loss:.4f} "
+              f"| CE_acc {va_acc:.2%} | 1-NN {va_1nn:.2%} | R@5 {va_rk:.2%}")
+    
+        # still use CE accuracy for early stopping — you decide
+        if va_1nn > best_acc:
+            best_acc = va_1nn
+            torch.save(model.state_dict(), os.path.join(args.model_dir, "best_cbramod_image_model.pth"))
+
+    print(f"Done. Best 1-NN acc: {best_acc:.2%}")

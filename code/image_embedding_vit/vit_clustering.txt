@@ -1,0 +1,2 @@
+Optimal number of clusters: 43
+Silhouette Score: 0.24746118485927582
