@@ -7,6 +7,8 @@
 
 ## Overview
 
+![image_eeg_finetune_bdml drawio (2)](https://github.com/user-attachments/assets/2179f879-2a71-417e-95b1-e36e52517548)
+
 **BrainAlign** introduces a novel framework that enhances visual and textual understanding in AI by aligning natural modality representations (from text and images) with human EEG-derived embedding spaces. Leveraging EEG foundation models and contrastive learning, BrainAlign bridges the gap between machine and human representations, improving AI performance in tasks such as image classification and sentiment analysis.
 
 ---
