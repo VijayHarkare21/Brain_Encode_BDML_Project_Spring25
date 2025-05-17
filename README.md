@@ -60,7 +60,7 @@ To download the required datasets:
 
 ## Results
 
-The analyses aim to reveal the extent to which computational models can replicate brain-like representations. Visualizations and quantitative metrics are provided in the `figs/` directory and the respective notebooks.
+The analyses aim to reveal the extent to which computational models can replicate brain-like representations.
 
 ## Contributing
 
