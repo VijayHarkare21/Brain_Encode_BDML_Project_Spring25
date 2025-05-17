@@ -27,7 +27,7 @@
 
 ### Prerequisites
 
-* Python 3.8 or higher
+* Python 3.11
 * Conda for environment management
 
 ### Installation
@@ -58,20 +58,6 @@ To download the required datasets:
 
 * Alternatively, manually download the datasets as specified in the `data_download.slurm` script.
 
-## Usage
-
-1. **Run analyses:**
-
-   * Execute the Jupyter notebooks (`test_img_labels.ipynb`, `test_zuco_embeds.ipynb`, `viz_test.ipynb`) to perform data analysis and visualization.
-
-2. **Perform RSA-CCA:**
-
-   * Navigate to the `rsa_cca/` directory and run the scripts to compute the representational similarity between EEG data and model embeddings.
-
-3. **Validate with Randomized Data:**
-
-   * Use the `rsa_cca_random/` directory to perform control analyses with randomized data, ensuring the robustness of the RSA-CCA results.
-
 ## Results
 
 The analyses aim to reveal the extent to which computational models can replicate brain-like representations. Visualizations and quantitative metrics are provided in the `figs/` directory and the respective notebooks.
@@ -79,7 +65,3 @@ The analyses aim to reveal the extent to which computational models can replicat
 ## Contributing
 
 Contributions are welcome! Please fork the repository and submit a pull request with your enhancements.
-
-## License
-
-This project is licensed under the MIT License.
