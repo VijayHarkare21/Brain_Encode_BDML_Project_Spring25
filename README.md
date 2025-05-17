@@ -1,8 +1,15 @@
-# Generating Brain-like Natural Modality Encodings
+# BrainAlign: Mapping Natural Modalities to EEG Representation Spaces
+
+*Authors: Vijay Jayawant Harkare, Shubham Patel*  
+*Department of Computer Science, New York University*
+
+---
 
 ## Overview
 
-This project explores the generation of brain-like natural modality encodings by integrating EEG data with computational models. It aims to bridge the gap between neural signals and machine learning representations, providing insights into how the brain processes information.
+**BrainAlign** introduces a novel framework that enhances visual and textual understanding in AI by aligning natural modality representations (from text and images) with human EEG-derived embedding spaces. Leveraging EEG foundation models and contrastive learning, BrainAlign bridges the gap between machine and human representations, improving AI performance in tasks such as image classification and sentiment analysis.
+
+---
 
 ## Repository Structure
 
